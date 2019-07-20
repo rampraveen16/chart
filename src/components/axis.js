@@ -1,39 +1,41 @@
 import * as d3 from 'd3'
 import { layout } from './bubble/layout'
-import { fnum, maxX, maxDensityY } from './data/utils'
-import { updateX, updateY } from './animate'
+import { fnum } from './data/utils'
+import { textMotion } from './animate'
+import { value } from './value'
 
 const { width, height, margin } = layout()
-
 export const svg = d3.select('#my_dataviz')
   .append('svg')
   .attr('viewBox', '0 0 1000 400')
   .append('g')
   .attr('transform',
     'translate(' + margin.left + ',' + margin.top + ')')
-let x, y, z, yAxis, xAxis
-const xScale = d3.scaleSqrt()
-const zscale = d3.scaleSqrt()
+var x, y, z, yAxis, xAxis
+const xScale = d3.scalePow().exponent(0.5)
+const zscale = d3.scalePow().exponent(0.5)
+
 export const axis = (data) => {
+  const { mcMax, maxDensity, mcMin } = value(data)
   z = zscale
-    .domain([0, d3.max(maxX(data))])
+    .domain([0, mcMax])
     .range([3, 50])
   x = xScale
-    .domain([0, d3.max(maxX(data)) + (d3.max(maxX(data)) / 7)])
-    .range([30, width])
+    .domain([mcMin, mcMax])
+    .range([20, width - 30])
 
   xAxis = svg.append('g').attr('class', 'axis-line')
     .attr('transform', 'translate(0,' + height + ')')
     .call(d3.axisBottom(x).tickFormat(function (d) {
       return fnum(d * 1000000)
-    }).ticks(5))
+    }).ticks())
 
   y = d3.scaleLinear()
-    .domain([0, d3.max(maxDensityY(data)) + 100])
+    .domain([1, maxDensity + 50])
     .range([height - 40, 0])
 
   yAxis = svg.append('g').attr('class', 'axis-line')
-    .call(d3.axisLeft(y))
+
   return {
     x,
     y,
@@ -42,40 +44,53 @@ export const axis = (data) => {
     yAxis
   }
 }
-var tempMax
-var tempMin
-export const drag = (data) => {
-  const updatePlotX = (value, handle, unencoded, tap, positions) => {
-    if (value[0] !== value[1]) {
-      x.domain([value[0], value[1]])
-      xAxis.transition().duration(200).call(d3.axisBottom(x).tickFormat(function (d) {
-        return fnum(d * 1000000)
-      }))
-      z = zscale
-        .domain([value[0], value[1]])
-        .range([3, 50])
-      tempMin = value[0]
-      tempMax = value[1]
+
+export const brushZoom = (data) => {
+  const brush = d3.brush().extent([[0, 0], [width, height]]).on('end', brushended)
+  svg.append('defs').append('svg:clipPath')
+    .attr('id', 'clip')
+    .attr('pointer-events', 'none')
+    .append('svg:rect')
+    .attr('width', width)
+    .attr('height', height)
+    .attr('x', 0)
+    .attr('y', 0)
+
+  var scatter = svg.append('g')
+    .attr('id', 'scatterplot')
+    .attr('pointer-events', 'none')
+    .attr('clip-path', 'url(#clip)')
+
+  scatter.append('g')
+    .attr('class', 'brushZoom')
+    .attr('pointer-events', 'none')
+    .call(brush)
+
+  function brushended () {
+    var s = d3.event.selection
+
+    if (!s) {
     } else {
-      z = zscale
-        .domain([tempMin, tempMax])
-        .range([5, 50])
-      x.domain([tempMin, tempMax])
-      xAxis.transition().duration(200).call(d3.axisBottom(x).tickFormat(function (d) {
-        return fnum(d * 1000000)
-      }))
+      x.domain([s[0][0], s[1][0]].map(x.invert, x))
+      y.domain([s[1][1], s[0][1]].map(y.invert, y))
+      scatter.select('.brushZoom').call(brush.move, null)
     }
-    updateX(data, x, y, z)
+    zoom()
   }
-  const updatePlotY = (value, handle, unencoded, tap, positions) => {
-    if (value[0] !== value[1]) {
-      y.domain([value[0], value[1]])
-      yAxis.transition().duration(300).call(d3.axisLeft(y))
-      updateY(data, x, y, z)
-    }
-  }
-  return {
-    updatePlotX,
-    updatePlotY
+  const zoom = () => {
+    var t = scatter.transition().duration(750)
+    xAxis.transition(t).call(d3.axisBottom(x).tickFormat(function (d) {
+      return fnum(d * 1000000)
+    }))
+    yAxis.transition(t).call(d3.axisLeft(y))
+    d3.selectAll('circle').transition(t)
+      .attr('cx', function (d) { return x(d.million) })
+      .attr('cy', function (d) { return y(d.assets) })
+      .attr('r', function (d) {
+        if (z(d.million) > 0) {
+          return z(d.million)
+        }
+      })
+    textMotion(data, x, y, z)
   }
 }

@@ -4,9 +4,10 @@ import { layout } from './layout'
 import { tooltip } from './tooltip'
 import { stringCombine } from '../data/utils'
 import { initAnimate } from '../animate'
-
+import { slider } from '../slider/index'
 export const createBubble = (data) => {
-  const { x, y, z } = axis(data)
+  const { x, y, z, xAxis, yAxis } = axis(data)
+  const { height } = layout()
   const { showTooltip, moveTooltip, hideTooltip } = tooltip()
   const node = svg.append('g').selectAll('dot')
     .data(data)
@@ -69,8 +70,9 @@ export const createBubble = (data) => {
     .attr('font-size', function (d) {
       return z(d.million) / 4
     })
+  slider(data, x, y, z, xAxis, yAxis)
   initAnimate(data, y, z)
-  const { height } = layout()
+
   d3.select('#my_dataviz svg > g').append('line')
     .attr('x1', 0)
     .attr('y1', height - 39)
